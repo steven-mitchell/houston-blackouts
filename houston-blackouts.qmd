@@ -1,0 +1,333 @@
+---
+title: "Houston Blackouts"
+subtitle: "Identifying the impacts of extreme weather"
+author: "Steven Mitchell"
+date: last-modified
+execute: 
+  eval: false
+  echo: true
+  warning: false
+  message: false
+format:
+  html:
+    toc: true
+    code-fold: true
+    theme: materia
+editor_options: 
+  chunk_output_type: console
+---
+
+# Setup
+```{r}
+# libraries
+library(terra)
+library(sf)
+library(tidyverse)
+library(here)
+library(tmap)
+library(viridisLite)
+library(stars)
+
+# starting with a bounding box of the houston area to minimize processing
+bbox <- st_bbox(c(xmin = -96.5,
+                  ymin = 29,
+                  xmax = -94.5,
+                  ymax = 30.5))
+
+# load data
+## open street map buildings
+osm_roads <- st_read(here("data", "gis_osm_roads_free_1.gpkg"), 
+                 query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'")
+
+osm_buildings <- st_read(here("data", "gis_osm_buildings_a_free_1.gpkg"), 
+query = "SELECT * FROM gis_osm_buildings_a_free_1 WHERE (type IS NULL AND name IS NULL) OR type in ('residential', 'apartments', 'house', 'static_caravan', 'detached')")
+
+# check / convert buildings CRS
+
+if(crs(osm_buildings) == "EPSG: 3083"){
+  print("CRS correct")
+} else{
+  warning("Updated CRS to EPSG 3083")
+  osm_buildings <- st_transform(osm_buildings, "EPSG: 3083")
+}
+
+# check / convert roads CRS
+if(crs(osm_roads) == "EPSG: 3083"){
+  print("CRS correct")
+} else{
+  warning("Updated CRS to EPSG 3083")
+  osm_roads <- st_transform(osm_roads, "EPSG: 3083")
+}
+
+# light data
+light_02_07a <- rast(here("data", "VNP46A1", "VNP46A1.A2021038.h08v05.001.2021039064328.tif"))
+
+light_02_07b <- rast(here("data", "VNP46A1", "VNP46A1.A2021038.h08v06.001.2021039064329.tif"))
+
+light_02_16a <- rast(here("data", "VNP46A1", "VNP46A1.A2021047.h08v05.001.2021048091106.tif"))
+
+light_02_16b <- rast(here("data", "VNP46A1", "VNP46A1.A2021047.h08v06.001.2021048091105.tif"))
+
+
+# load census tract geometries
+census_tracts <- st_read(here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"),
+                  layer = "ACS_2019_5YR_TRACT_48_TEXAS")
+
+# check / convert census tract data CRS
+if(crs(census_tracts) == "EPSG: 3083"){
+  print("CRS correct")
+} else{
+  warning("Updated CRS to EPSG 3083")
+  census_tracts <- st_transform(census_tracts, "EPSG: 3083")
+}
+
+# load income data
+income <- st_read(here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"),
+                  layer = "X19_INCOME")
+
+# join the data tables
+census_income <- left_join( census_tracts, income, 
+                            join_by(GEOID_Data == GEOID))
+
+# check / convert census_income data CRS
+if(crs(census_income) == "EPSG: 3083"){
+  print("CRS correct")
+} else{
+  warning("Updated CRS to EPSG 3083")
+  census_income <- st_transform(census_income, "EPSG: 3083")
+}
+
+```
+
+# Part 1: Mapping the Houston Blackouts
+```{r}
+# merge the 02-07 light rasters
+light_02_07 <- merge(light_02_07a, light_02_07b)
+
+# merge the 02-16 light rasters
+light_02_16 <- merge(light_02_16a, light_02_16b)
+```
+
+## Maps of Houston nightlight intensity before and after the storm.
+
+```{r}
+#crop the night light data to the Houston area
+h_light_0207 <- terra::crop(light_02_07, bbox)
+summary(h_light_0207)
+
+h_light_0216 <- terra::crop(light_02_16, bbox)
+
+tmap_mode("plot")
+
+map_0207 <- tm_shape(h_light_0207)+
+  tm_raster(breaks = c(0, 0.2, 1, 3, 5, 10, 100, 200, 10000, 100000),
+    palette = magma(10),
+            title = "Night Light Intensity")+
+  tm_layout(legend.outside = TRUE,
+            main.title = "February 7, 2021")+
+  tm_compass(position = c("right", "bottom"))+
+  tm_scale_bar(position = c("right", "bottom"))
+
+map_0216 <- tm_shape(h_light_0216)+
+  tm_raster(breaks = c(0, 0.2, 1, 3, 5, 10, 100, 200, 10000, 100000),
+    palette = magma(10),
+            title = "Night Light Intensity")+
+  tm_layout(legend.outside = TRUE,
+            main.title = "February 16, 2021")+
+  tm_compass(position = c("right", "bottom"))+
+  tm_scale_bar(position = c("right", "bottom"))
+
+tmap_save(map_0207, here("outputs", "map_0207.png"))
+tmap_save(map_0216, here("outputs", "map_0216.png"))
+```
+
+
+![](outputs\map_0207.png)
+
+![](outputs\map_0216.png)
+
+
+
+### Maps Interpretation
+Note the change in the urban center. The general pattern of blackouts are visible in the form of orange encroaching into the yellow area. This is apparent despite the overall increase in light intensity across the area.
+
+```{r}
+# use h_light_0207 to make a Houston area vector for later use
+houston <- st_as_stars(h_light_0207)
+
+# vectorize
+houston <- st_as_sf(houston)
+
+# check / convert Houston cookie cutter data CRS
+
+if(crs(houston) == "EPSG: 3083"){
+  print("CRS correct")
+} else{
+  warning("Updated CRS to EPSG 3083")
+  houston <- st_transform(houston, "EPSG: 3083")
+}
+
+# dissolve the grid into cookie cutter
+houston <- st_union(houston)
+
+# Calculate light intensity difference
+light_diff <- light_02_07 - light_02_16
+summary(light_diff)
+
+# Calculate light intensity difference
+
+## define reclass matrix
+rcl <- matrix(c(-20900, -200, 1,# group 1 ranges from -20900 (min) to -200
+                -201, 3775, NA), # group 2 ranges from -200 to 3776 (max)
+                ncol = 3, byrow = TRUE)
+
+# use reclass matrix to reclassify light_diff raster
+blackouts <- classify(light_diff, rcl = rcl)
+
+# change reclasssed values into factors
+values(blackouts) <- as.factor(values(blackouts))
+summary(blackouts)
+
+# Crop blackout raster to Houston area
+blackouts_cropped <- terra::crop(blackouts, bbox)
+summary(blackouts_cropped)
+
+
+# Vectorize light raster
+## first, convert it to a stars object
+blackouts_stars <- st_as_stars(blackouts_cropped)
+
+# have a look at it
+summary(blackouts_stars)
+
+# vectorize!!!
+blackouts_vector <- st_as_sf(blackouts_stars)
+
+# check / convert blackout vector CRS
+if(crs(blackouts_vector) == "EPSG: 3083"){
+  print("CRS correct")
+} else{
+  warning("Updated CRS to EPSG 3083")
+  blackouts_vector <-  st_transform(blackouts_vector, "EPSG: 3083")
+}
+```
+
+# Part 2: Identifying impacted homes based on changes in night light intensity.
+
+```{r}
+# Make a 200 m buffer around roads
+## check for meters as units
+st_crs(osm_roads)$units 
+
+# buffer the roads by 200m
+highway_buffer <- st_buffer(osm_roads, dist = 200)
+
+# combine th buffer polygons
+highway_buffer_union <- st_union(highway_buffer)
+
+## Exclude highway buffer from blackout mask
+blackouts_mask_no_highways <- st_difference(blackouts_vector, highway_buffer_union)
+
+# Spatial geometry filtering to count homes impacted by blackouts
+blackout_homes <-  st_filter(x = osm_buildings, y = blackouts_mask_no_highways, .predicate = st_intersects)
+```
+
+## Map of Homes Impacted by Blackouts
+
+```{r}
+tmap_mode("view")
+
+map_blackout_homes <- tm_basemap("Esri")+
+  tm_shape(blackout_homes)+
+  tm_polygons(col = "black")
+
+tmap_save(map_blackout_homes, here("outputs", "map_blackout_homes.html"))
+```
+
+![](outputs\map_blackout_homes.html){height=600 width=800}
+
+
+Homes likely to have experiencced the blackout are depicted as gray polygons in the above figure. An estimated **81914 homes experienced blackouts**.
+
+# Part 3: Identifying the census tracts impacted by blackout.
+```{r}
+## Crop census data to the Houston area
+census_income <- st_filter(x = census_income, y = houston,
+                           .predicate = st_intersects)
+
+# filter down to the affected tracts
+blackout_tracts <- st_filter(x = census_income, y = blackouts_mask_no_highways,
+                             .predicate = st_intersects)
+
+# filter down to the unaffected tracts 
+## (st_difference isn't working so this is my work-around)
+
+# find the indices of blackout polygons
+blackout_indices <- st_intersects(census_income, blackouts_mask_no_highways)
+
+# filter by those indices
+unaffected_tracts <- census_income[!sapply(blackout_indices, length) > 0, ]
+```
+
+## Map of Blackouts by Census Tract
+```{r}
+tmap_mode("view")
+
+map_blackouts_tracts <- tm_basemap("Esri")+
+  tm_shape(blackout_tracts)+
+  tm_polygons(col = "darkred",
+              alpha = 0.5,
+              title = "Blackouts")
+
+tmap_save(map_blackouts_tracts, here("outputs", "map_blackouts_tracts.html"))
+```
+
+![](outputs\map_blackouts_tracts.html){height=600 width=800}
+
+### Map Interpretation
+Here the census tracts likely to have experienced the blackout are visible as red polygons overlaid on the Houston area.
+
+# Part 4: Comparing the median household income among impacted and un-impacted census tracts.
+
+```{r}
+plot_blackout_income <- ggplot(data = blackout_tracts, aes(x = B19013e1))+
+  geom_histogram()+
+  labs(x = "Median Household Income ($)",
+       y = "",
+       title = "Distribution of Median Incomes for Census Tracts Impacted by Blackouts")+
+  theme_bw()
+
+plot_unaffected_income <- ggplot(data = unaffected_tracts, aes(x = B19013e1))+
+  geom_histogram()+
+  labs(x = "Median Household Income ($)",
+       y = "",
+       title = "Distribution of Median Incomes for Census Tracts Un-impacted by Blackouts")+
+  theme_bw()
+
+ggsave(here("outputs", "plot_unaffected_income.png"), plot_unaffected_income)
+
+ggsave(here("outputs", "plot_blackout_income.png"), plot_blackout_income)
+```
+
+:::{layout="[[1,1]]"}
+
+![](outputs\plot_blackout_income.png)
+
+![](outputs\plot_unaffected_income.png)
+:::
+
+## Figure Interpretation
+
+Above are depicted wide spread of incomes impacted by the blackouts. Note that lower median household incomes are more highly represented than un-impacted tracts. 
+
+# Reflection
+
+In the above analysis and accompanying figures, the impacts of the storm are made apparent as a visible change in night light intensity in the hoston metro area. An estimated **81914 homes experienced blackouts** according to this analysis. Further, these results suggest that blackouts occured independently of income level, as indicated by the median household incomes across census blocks. This is somewhat surprising as one might expect households with higher income to overcome barriers and power their homes (and lights). This trend implies the pervasive nature of the blackouts without readily available alternate power sources.
+
+# Citations
+| Data | Link |
+| -----|  ------|
+| Night Lights | https://ladsweb.modaps.eosdis.nasa.gov/|
+| Open Street Map Roads | https://planet.openstreetmap.org/ |
+| Open Street Map Buildings | https://planet.openstreetmap.org/ |
+| Socioeconomic Data | https://www.census.gov/programs-surveys/acs |
