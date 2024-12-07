@@ -15,11 +15,11 @@ This repository demonstrates my analysis of the 2021 blackouts in Houston result
 ```
 .
 ├── README.md
-├── gitignore
+├── .gitignore
 ├──houston-blackouts.Rproj
-├──houston-blackouts.html   # rendered report document
-├──houston-blackouts.qmd    # non-rendered report with raw code
-├──data                         # too large for github: see Data section
+├──houston-blackouts.html                   # rendered report document
+├──houston-blackouts.qmd                    # non-rendered report with raw code
+├──data                                     # too large for github: see Data section
 │   ├── ACS_2019_5YR_TRACT_48_TEXAS.gdb     # census tract data
 │   ├── gis_osm_buildings_a_free_1.gpkg     # data on buildings
 │   ├── gis_osm_roads_free_1.gpkg           # data on roads
@@ -28,11 +28,11 @@ This repository demonstrates my analysis of the 2021 blackouts in Houston result
 │       ├── VNP46A1.A2021038.h08v06.001.2021039064329.tif
 │       ├── VNP46A1.A2021047.h08v05.001.2021048091106.tif
 │       └── VNP46A1.A2021047.h08v06.001.2021048091105.tif
-└──outputs
+└──outputs                                  
     ├── map_0207.png
     ├── map_0216.png
-    ├── map_blackout_homes.html
-    ├── map_blackout_tracts.html
+    ├── map_blackout_homes.html             # too large fro GitHub hosting
+    ├── map_blackout_tracts.html            # too large fro GitHub hosting
     ├── plot_unaffected_income.png
     └── plot_blackout_income.png
 

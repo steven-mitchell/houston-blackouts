@@ -3,4 +3,5 @@
 .RData
 .Ruserdata
 data/
-outputs/
+outputs/map_blackout_homes.html
+outputs.map_blackouts_tracts.html
