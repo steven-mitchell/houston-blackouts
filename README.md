@@ -31,8 +31,8 @@ This repository demonstrates my analysis of the 2021 blackouts in Houston result
 └──outputs                                  
     ├── map_0207.png
     ├── map_0216.png
-    ├── map_blackout_homes.html             # too large fro GitHub hosting
-    ├── map_blackout_tracts.html            # too large fro GitHub hosting
+    ├── map_blackout_homes.html             # too large for GitHub hosting
+    ├── map_blackout_tracts.html            # too large for GitHub hosting
     ├── plot_unaffected_income.png
     └── plot_blackout_income.png
 
