@@ -13,6 +13,7 @@ format:
     toc: true
     code-fold: true
     theme: materia
+    embed-resources: true
 editor_options: 
   chunk_output_type: console
 ---
@@ -235,16 +236,16 @@ blackout_homes <-  st_filter(x = osm_buildings, y = blackouts_mask_no_highways, 
 ## Map of Homes Impacted by Blackouts
 
 ```{r}
-tmap_mode("view")
+tmap_mode("plot")
 
 map_blackout_homes <- tm_basemap("Esri")+
   tm_shape(blackout_homes)+
   tm_polygons(col = "black")
 
-tmap_save(map_blackout_homes, here("outputs", "map_blackout_homes.html"))
+tmap_save(map_blackout_homes, here("outputs", "map_blackout_homes.jpg"))
 ```
 
-![](outputs\map_blackout_homes.html){height=600 width=800}
+![](outputs\map_blackout_homes.jpg){height=600 width=800}
 
 
 Homes likely to have experiencced the blackout are depicted as gray polygons in the above figure. An estimated **81914 homes experienced blackouts**.
@@ -271,7 +272,7 @@ unaffected_tracts <- census_income[!sapply(blackout_indices, length) > 0, ]
 
 ## Map of Blackouts by Census Tract
 ```{r}
-tmap_mode("view")
+tmap_mode("plot")
 
 map_blackouts_tracts <- tm_basemap("Esri")+
   tm_shape(blackout_tracts)+
@@ -279,10 +280,10 @@ map_blackouts_tracts <- tm_basemap("Esri")+
               alpha = 0.5,
               title = "Blackouts")
 
-tmap_save(map_blackouts_tracts, here("outputs", "map_blackouts_tracts.html"))
+tmap_save(map_blackouts_tracts, here("outputs", "map_blackouts_tracts.jpg"))
 ```
 
-![](outputs\map_blackouts_tracts.html){height=600 width=800}
+![](outputs\map_blackouts_tracts.jpg){height=600 width=800}
 
 ### Map Interpretation
 Here the census tracts likely to have experienced the blackout are visible as red polygons overlaid on the Houston area.
