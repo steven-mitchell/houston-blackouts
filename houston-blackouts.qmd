@@ -26,6 +26,7 @@ library(sf)
 library(tidyverse)
 library(here)
 library(tmap)
+library(tmaptools)
 library(viridisLite)
 library(stars)
 
@@ -120,38 +121,59 @@ h_light_0216 <- terra::crop(light_02_16, bbox)
 
 tmap_mode("plot")
 
+# February 7, 2021
 map_0207 <- tm_shape(h_light_0207)+
   tm_raster(breaks = c(0, 0.2, 1, 3, 5, 10, 100, 200, 10000, 100000),
     palette = magma(10),
             title = "Night Light Intensity")+
-  tm_layout(legend.outside = TRUE,
-            main.title = "February 7, 2021")+
+  tm_layout(legend.position = c("left", "top"),
+            legend.text.size = 0.6,
+            legend.text.color = "white", 
+            legend.title.size = 0.8, 
+            legend.title.color = "white",
+            legend.bg.color = "black",       #
+            legend.bg.alpha = 0.7,  
+            outer.bg.color = "transparent",
+            main.title = "February 07, 2021")+
   tm_compass(position = c("right", "bottom"))+
-  tm_scale_bar(position = c("right", "bottom"))
+  tm_scale_bar(position = c("left", "bottom"))
 
+tmap_save(map_0207, here("outputs", "map_0207.png"), bg = "transparent", dpi = 400)
+
+# Feb 16, 2021
 map_0216 <- tm_shape(h_light_0216)+
   tm_raster(breaks = c(0, 0.2, 1, 3, 5, 10, 100, 200, 10000, 100000),
     palette = magma(10),
             title = "Night Light Intensity")+
-  tm_layout(legend.outside = TRUE,
+  tm_layout(legend.position = c("left", "top"),
+            legend.text.size = 0.6,
+            legend.text.color = "white", 
+            legend.title.size = 0.8, 
+            legend.title.color = "white",
+            legend.bg.color = "black",       #
+            legend.bg.alpha = 0.7,  
+            outer.bg.color = "transparent",
+            bground.color = "transparent",
             main.title = "February 16, 2021")+
   tm_compass(position = c("right", "bottom"))+
-  tm_scale_bar(position = c("right", "bottom"))
+  tm_scale_bar(position = c("left", "bottom"))
 
-tmap_save(map_0207, here("outputs", "map_0207.png"))
-tmap_save(map_0216, here("outputs", "map_0216.png"))
+tmap_save(map_0216, here("outputs", "map_0216.png"), bg = "transparent", dpi = 400)
 ```
 
-
+::: {layout-ncol="2"}
 ![](outputs\map_0207.png)
 
 ![](outputs\map_0216.png)
-
+:::
 
 
 ### Maps Interpretation
 Note the change in the urban center. The general pattern of blackouts are visible in the form of orange encroaching into the yellow area. This is apparent despite the overall increase in light intensity across the area.
 
+# Part 2: Identifying impacted homes and census tracts based on changes in night light intensity.
+
+## Homes impacted by blackout
 ```{r}
 # use h_light_0207 to make a Houston area vector for later use
 houston <- st_as_stars(h_light_0207)
@@ -213,9 +235,22 @@ if(crs(blackouts_vector) == "EPSG: 3083"){
 }
 ```
 
-# Part 2: Identifying impacted homes based on changes in night light intensity.
-
 ```{r}
+# load county data as a basemap
+counties <- st_read(here("data", "tl_2023_us_county", "tl_2023_us_county.shp"))
+
+# check / convert county vector CRS
+if(crs(counties) == "EPSG: 3083"){
+  print("CRS correct")
+} else{
+  warning("Updated CRS to EPSG 3083")
+  counties <-  st_transform(counties, "EPSG: 3083")
+}
+
+# crop the county data to the Houston area
+houston_counties <- st_filter(x = counties, y = houston,
+                               .predicate = st_intersects)
+
 # Make a 200 m buffer around roads
 ## check for meters as units
 st_crs(osm_roads)$units 
@@ -223,7 +258,7 @@ st_crs(osm_roads)$units
 # buffer the roads by 200m
 highway_buffer <- st_buffer(osm_roads, dist = 200)
 
-# combine th buffer polygons
+# combine the buffer polygons
 highway_buffer_union <- st_union(highway_buffer)
 
 ## Exclude highway buffer from blackout mask
@@ -233,24 +268,29 @@ blackouts_mask_no_highways <- st_difference(blackouts_vector, highway_buffer_uni
 blackout_homes <-  st_filter(x = osm_buildings, y = blackouts_mask_no_highways, .predicate = st_intersects)
 ```
 
-## Map of Homes Impacted by Blackouts
-
 ```{r}
-tmap_mode("plot")
+bbox <-  st_bbox(blackout_homes)
 
-map_blackout_homes <- tm_basemap("Esri")+
+map_blackout_homes <- tm_shape(counties, bbox = bbox)+
+  tm_polygons(col = "#1e0057",
+              fill = "#1e0057",
+              fill_alpha = 0.7)+
+  tm_shape(houston_counties) +
+  tm_polygons(col = "#1e0057",
+              fill = "#3b00ab") +
+  tm_shape(highway_buffer_union)+
+  tm_polygons(col = "#1e0057",
+              fill = "#1e0057",
+              fill_alpha = 0.5) +
   tm_shape(blackout_homes)+
-  tm_polygons(col = "black")
+  tm_polygons(col = "#fd007b")+
+  tm_layout(outer.bg.color = "transparent",
+            bg.color = "#000327")
 
-tmap_save(map_blackout_homes, here("outputs", "map_blackout_homes.jpg"))
+tmap_save(map_blackout_homes, here("outputs", "map_blackout_homes.png"), dpi = 400)
 ```
 
-![](outputs\map_blackout_homes.jpg){height=600 width=800}
-
-
-Homes likely to have experiencced the blackout are depicted as gray polygons in the above figure. An estimated **81914 homes experienced blackouts**.
-
-# Part 3: Identifying the census tracts impacted by blackout.
+## Census tracts impacted by blackout
 ```{r}
 ## Crop census data to the Houston area
 census_income <- st_filter(x = census_income, y = houston,
@@ -270,52 +310,83 @@ blackout_indices <- st_intersects(census_income, blackouts_mask_no_highways)
 unaffected_tracts <- census_income[!sapply(blackout_indices, length) > 0, ]
 ```
 
-## Map of Blackouts by Census Tract
 ```{r}
-tmap_mode("plot")
+bbox2 <- st_bbox(blackout_tracts)
 
-map_blackouts_tracts <- tm_basemap("Esri")+
+map_blackouts_tracts <- tm_shape(counties, bbox = bbox2)+
+  tm_polygons(col = "#1e0057",
+              fill = "#1e0057",
+              fill_alpha = 0.7)+
+  tm_shape(houston_counties) +
+  tm_polygons(col = "#1e0057",
+              fill = "#3b00ab") +
+  tm_shape(highway_buffer_union)+
+  tm_polygons(col = "#1e0057",
+              fill = "#1e0057",
+              fill_alpha = 0.5) +
   tm_shape(blackout_tracts)+
-  tm_polygons(col = "darkred",
-              alpha = 0.5,
-              title = "Blackouts")
+  tm_polygons(col = "#fd007b",
+              fill = "#fd007b",
+              fill_alpha = 0.5)+
+  tm_layout(outer.bg.color = "transparent",
+            bg.color = "#000327")
 
-tmap_save(map_blackouts_tracts, here("outputs", "map_blackouts_tracts.jpg"))
+tmap_save(map_blackouts_tracts, here("outputs", "map_blackouts_tracts.png"), dpi = 400)
 ```
 
-![](outputs\map_blackouts_tracts.jpg){height=600 width=800}
+::: {layout-ncol="2"}
+![Homes likely to have experiencced the blackout are depicted as pink polygons in the above figure. An estimated **81914 homes experienced blackouts**.](outputs\map_blackout_homes.png)
 
-### Map Interpretation
-Here the census tracts likely to have experienced the blackout are visible as red polygons overlaid on the Houston area.
+![Here the census tracts likely to have experienced the blackout are visible as pink polygons overlaid on the Houston area.](outputs\map_blackouts_tracts.png)
 
-# Part 4: Comparing the median household income among impacted and un-impacted census tracts.
+:::
+
+# Part 3: Comparing the median household income among impacted and un-impacted census tracts.
 
 ```{r}
-plot_blackout_income <- ggplot(data = blackout_tracts, aes(x = B19013e1))+
-  geom_histogram()+
-  labs(x = "Median Household Income ($)",
-       y = "",
-       title = "Distribution of Median Incomes for Census Tracts Impacted by Blackouts")+
-  theme_bw()
-
-plot_unaffected_income <- ggplot(data = unaffected_tracts, aes(x = B19013e1))+
-  geom_histogram()+
-  labs(x = "Median Household Income ($)",
-       y = "",
-       title = "Distribution of Median Incomes for Census Tracts Un-impacted by Blackouts")+
-  theme_bw()
-
-ggsave(here("outputs", "plot_unaffected_income.png"), plot_unaffected_income)
-
-ggsave(here("outputs", "plot_blackout_income.png"), plot_blackout_income)
+# redlining plot example
+chart_life_exp <- ggplot(table_life_exp)+
+  scale_fill_manual(values = c("darkgreen", "navyblue", "gold", "darkred"))+
+  geom_col(aes(x = grade, y = life_exp,
+               fill = grade))+
+  labs(x = "HOLC Rating", y = "Percentile for Low Life Expectancy")+
+  theme_bw()+
+  theme(legend.position = "none",
+        panel.background = element_rect(fill='transparent'), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA))
+#####################
 ```
 
-:::{layout="[[1,1]]"}
 
-![](outputs\plot_blackout_income.png)
+```{r}
+# Add a grouping variable to your data beforehand if needed
+blackout_tracts$status <- "Impacted"
+unaffected_tracts$status <- "Unaffected"
 
-![](outputs\plot_unaffected_income.png)
-:::
+# Combine the data
+combined_tracts <- rbind(blackout_tracts, unaffected_tracts)
+
+plot_blackout_tracts <- ggplot(data = combined_tracts, aes(x = B19013e1, fill = status)) +
+  geom_histogram(data = blackout_tracts, alpha = 0.5, bins = 30) +
+  geom_histogram(data = unaffected_tracts, alpha = 0.5, bins = 30) +
+  scale_fill_manual(
+    name = "Census Tract Status",  # Legend title
+    values = c("Impacted" = "#fd007b", "Unaffected" = "#3b00ab"),
+    labels = c("Impacted by Blackout", "Not Impacted")) +  # Legend labels
+  labs(x = "Median Household Income ($)",
+       y = "",
+       title = "Distribution of Median Incomes for Census Tracts Impacted by Blackouts") +
+  theme_bw() +
+  theme(panel.background = element_rect(fill = 'transparent'),
+        plot.background = element_rect(fill = 'transparent', color = NA))
+
+ggsave(here("outputs", "plot_blackout_tracts.png"), plot_blackout_tracts,
+       height = 5, width = 7, dpi = 400, bg = "transparent")
+```
+
+
+![](outputs\plot_blackout_tracts.png)
+
 
 ## Figure Interpretation
 
